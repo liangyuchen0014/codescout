@@ -30,7 +30,7 @@ A prerequisite for coding agents to perform tasks on large repositories is code 
 
 Given a GitHub issue and a pre-PR repository, CodeScout navigates the repository via a terminal using Unix command-line utilities (for e.g. `rg`, `sed`, and `cat`.), and localizes relevant files, classes, and functions of code. The ground truth location set is determined by parsing the gold patch that fixes the issue.
 
-We train 1.7B, 4B, and 14B models using RL wherein our reward function is the sum of file-level, module-level, and function-level F1 scores. 
+We train 1.7B, 4B, and 14B models using RL wherein our reward function is the sum of file-level, module-level, and function-level F1 scores.
 
 ![CodeScout system diagram](./docs/recipe.png)
 
@@ -44,10 +44,17 @@ We open-source all our models, datasets and trajectories in this [Hugging Face c
 - Evaluation benchmarks (re-purposed for code search): [SWE-Bench Verified](https://huggingface.co/datasets/OpenHands/SWE-bench_Verified-locagent), [SWE-Bench Pro](https://huggingface.co/datasets/OpenHands/SWE-bench_Pro-locagent), [SWE-Bench Lite](https://huggingface.co/datasets/OpenHands/SWE-bench_Lite-locagent)
 - Rollouts:
   - [Training Rollouts logged during RL for CodeScout-14B and CodeScout-4B](https://huggingface.co/datasets/OpenHands/CodeScout_Training_Rollouts)
-  - [Evaluation Trajectories for all our experiments on 12 models using 3 benchmarks](https://huggingface.co/datasets/OpenHands/CodeScout_Eval_Rollouts) 
+  - [Evaluation Trajectories for all our experiments on 12 models using 3 benchmarks](https://huggingface.co/datasets/OpenHands/CodeScout_Eval_Rollouts)
 ---
 
 ## 🚀 Quick Start
+**重要：直接执行下面的脚本和命令即可一键配置环境：**
+```
+cd /data/codescout
+VIRTUAL_ENV=/data/venv bash scripts/setup_environment.sh
+source /opt/codescout-venv/bin/activate
+```
+
 
 ### Environment setup
 
@@ -65,7 +72,7 @@ We open-source all our models, datasets and trajectories in this [Hugging Face c
       cargo install ripgrep --version 15.1.0
 
       # Step 3: Verify if installation completed successfully - this command should execute without errors
-      rg --version       
+      rg --version
    ```
 
 #### Installing Dependencies:
@@ -101,13 +108,13 @@ All our evaluation experiments have been performed using this [fork](https://git
 
 ```bibtex
 @misc{sutawika2026codescouteffectiverecipereinforcement,
-	title={CodeScout: An Effective Recipe for Reinforcement Learning of Code Search Agents}, 
+	title={CodeScout: An Effective Recipe for Reinforcement Learning of Code Search Agents},
 	author={Lintang Sutawika and Aditya Bharat Soni and Bharath Sriraam R R and Apurva Gandhi and Taha Yassine and Sanidhya Vijayvargiya and Yuchen Li and Xuhui Zhou and Yilin Zhang and Leander Melroy Maben and Graham Neubig},
 	year={2026},
 	eprint={2603.17829},
 	archivePrefix={arXiv},
 	primaryClass={cs.SE},
-	url={https://arxiv.org/abs/2603.17829}, 
+	url={https://arxiv.org/abs/2603.17829},
 }
 ```
 

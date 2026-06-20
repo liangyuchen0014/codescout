@@ -1,3 +1,0 @@
-# Reproducing our training experiments
-
-More details coming ...
