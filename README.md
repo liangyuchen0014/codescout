@@ -47,14 +47,6 @@ We open-source all our models, datasets and trajectories in this [Hugging Face c
   - [Evaluation Trajectories for all our experiments on 12 models using 3 benchmarks](https://huggingface.co/datasets/OpenHands/CodeScout_Eval_Rollouts)
 ---
 
-## 🚀 Quick Start
-**重要：直接执行下面的脚本和命令即可一键配置环境：**
-```
-cd /data/codescout
-VIRTUAL_ENV=/data/venv bash scripts/setup_environment.sh
-source /opt/codescout-venv/bin/activate
-```
-
 
 ### Environment setup
 
