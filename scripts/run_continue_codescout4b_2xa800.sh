@@ -17,7 +17,7 @@
 
 set -euo pipefail
 export WANDB_API_KEY="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"
-while getopts ":m:n:d:s:l:o:i:t:b:c:r:w:e:x:" opt; do
+while getopts ":m:n:d:s:l:o:i:t:b:c:r:w:e:x:u:" opt; do
   case ${opt} in
     m ) MODEL=$OPTARG;;
     n ) N_ROLLOUTS=$OPTARG;;
@@ -33,8 +33,9 @@ while getopts ":m:n:d:s:l:o:i:t:b:c:r:w:e:x:" opt; do
     w ) STEP_WISE=$OPTARG;;
     e ) EXP_CONFIG=$OPTARG;;
     x ) MAX_STEPS=$OPTARG;;
+    u ) EXCLUDE_IDS_FILE=$OPTARG;;
     * )
-      echo "Usage: $0 [-m model] [-e exp_config] [-x max_steps] [-n rollouts] [-b batch] [-c micro_batch] [-d data_path] [-s output_ckpt_path] [-l resume_ckpt_path] [-i inference_gpus] [-t training_gpus] [-r run_name] [-w step_wise] [-o hydra_option]" >&2
+      echo "Usage: $0 [-m model] [-e exp_config] [-x max_steps] [-u exclude_ids_file] [-n rollouts] [-b batch] [-c micro_batch] [-d data_path] [-s output_ckpt_path] [-l resume_ckpt_path] [-i inference_gpus] [-t training_gpus] [-r run_name] [-w step_wise] [-o hydra_option]" >&2
       exit 2
       ;;
   esac
@@ -99,13 +100,14 @@ EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-20}"
 EVAL_N_SAMPLES_PER_PROMPT="${EVAL_N_SAMPLES_PER_PROMPT:-1}"
 RUN_NAME="${RUN_NAME:-${MODEL_ALIAS}-${EXP_ALIAS}-${BATCH_SIZE}x${N_ROLLOUTS}}"
 OTHER_OPTION="${OTHER_OPTION:-}"
+EXCLUDE_IDS_FILE="${EXCLUDE_IDS_FILE:-}"
 
 TRAIN_DATA_PATH="${DATA_PATH}"
 if [ "${MAX_STEPS}" -gt 0 ]; then
   SUBSET_DATA_PATH="${CKPT_DIR}run_data"
   mkdir -p "${SUBSET_DATA_PATH}"
   MAX_TRAIN_ISSUES=$((MAX_STEPS * BATCH_SIZE))
-  SOURCE_DATA_PATH="${DATA_PATH}" SUBSET_DATA_PATH="${SUBSET_DATA_PATH}" MAX_TRAIN_ISSUES="${MAX_TRAIN_ISSUES}" python - <<'PY'
+  SOURCE_DATA_PATH="${DATA_PATH}" SUBSET_DATA_PATH="${SUBSET_DATA_PATH}" MAX_TRAIN_ISSUES="${MAX_TRAIN_ISSUES}" EXCLUDE_IDS_FILE="${EXCLUDE_IDS_FILE}" python - <<'PY'
 import os
 from pathlib import Path
 
@@ -114,8 +116,23 @@ import pandas as pd
 source = Path(os.environ["SOURCE_DATA_PATH"])
 target = Path(os.environ["SUBSET_DATA_PATH"])
 max_train_issues = int(os.environ["MAX_TRAIN_ISSUES"])
+exclude_ids_file = os.environ.get("EXCLUDE_IDS_FILE", "")
 
 train = pd.read_parquet(source / "train.parquet")
+source_count = len(train)
+if exclude_ids_file:
+    exclude_path = Path(exclude_ids_file)
+    exclude_ids = {
+        line.strip()
+        for line in exclude_path.read_text().splitlines()
+        if line.strip()
+    }
+    train = train[~train["instance_id"].isin(exclude_ids)].reset_index(drop=True)
+    print(
+        f"Excluded {source_count - len(train)} train issues using "
+        f"{exclude_path} ({len(exclude_ids)} ids)."
+    )
+
 if len(train) < max_train_issues:
     raise ValueError(
         f"Not enough train issues for requested MAX_STEPS: "
