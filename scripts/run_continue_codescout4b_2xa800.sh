@@ -16,8 +16,8 @@
 #     -s /root/autodl-tmp/codescout_runs/codescout4b-outcome-process-smoke
 
 set -euo pipefail
-
-while getopts ":m:n:d:s:l:o:i:t:b:c:r:w:e:" opt; do
+export WANDB_API_KEY="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"
+while getopts ":m:n:d:s:l:o:i:t:b:c:r:w:e:x:" opt; do
   case ${opt} in
     m ) MODEL=$OPTARG;;
     n ) N_ROLLOUTS=$OPTARG;;
@@ -32,8 +32,9 @@ while getopts ":m:n:d:s:l:o:i:t:b:c:r:w:e:" opt; do
     r ) RUN_NAME=$OPTARG;;
     w ) STEP_WISE=$OPTARG;;
     e ) EXP_CONFIG=$OPTARG;;
+    x ) MAX_STEPS=$OPTARG;;
     * )
-      echo "Usage: $0 [-m model] [-e exp_config] [-n rollouts] [-b batch] [-c micro_batch] [-d data_path] [-s output_ckpt_path] [-l resume_ckpt_path] [-i inference_gpus] [-t training_gpus] [-r run_name] [-w step_wise] [-o hydra_option]" >&2
+      echo "Usage: $0 [-m model] [-e exp_config] [-x max_steps] [-n rollouts] [-b batch] [-c micro_batch] [-d data_path] [-s output_ckpt_path] [-l resume_ckpt_path] [-i inference_gpus] [-t training_gpus] [-r run_name] [-w step_wise] [-o hydra_option]" >&2
       exit 2
       ;;
   esac
@@ -72,12 +73,13 @@ mkdir -p "$CKPT_DIR" "$DEFAULT_CACHE_ROOT" "$DEFAULT_TMP_ROOT" "$DEFAULT_WANDB_D
 N_ROLLOUTS="${N_ROLLOUTS:-8}"
 BATCH_SIZE="${BATCH_SIZE:-2}"
 MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-1}"
+MAX_STEPS="${MAX_STEPS:-200}"
 MAX_LENGTH="${MAX_LENGTH:-4096}"
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
-MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-32768}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-40960}"
+MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-40960}"
 MAX_TURNS="${MAX_TURNS:-8}"
 MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-65536}"
-GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.80}"
+GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.85}"
 NUM_INFERENCE_ENGINES="${NUM_INFERENCE_ENGINES:-1}"
 NUM_TRAINING_ENGINES="${NUM_TRAINING_ENGINES:-1}"
 INFERENCE_TENSOR_PARALLEL_SIZE="${INFERENCE_TENSOR_PARALLEL_SIZE:-1}"
@@ -85,9 +87,10 @@ STEP_WISE="${STEP_WISE:-false}"
 COLOCATE_ALL="${COLOCATE_ALL:-false}"
 RUN_ASYNC_TRAINER="${RUN_ASYNC_TRAINER:-true}"
 LOGGER="${LOGGER:-wandb}"
+TRAINER_SEED="${TRAINER_SEED:-42}"
 WEIGHT_SYNC_BACKEND="${WEIGHT_SYNC_BACKEND:-nccl}"
 DUMP_DATA_BATCH="${DUMP_DATA_BATCH:-false}"
-CKPT_INTERVAL="${CKPT_INTERVAL:-10}"
+CKPT_INTERVAL="${CKPT_INTERVAL:-20}"
 HF_SAVE_INTERVAL="${HF_SAVE_INTERVAL:-50}"
 MAX_CKPTS_TO_KEEP="${MAX_CKPTS_TO_KEEP:-2}"
 EVAL_INTERVAL="${EVAL_INTERVAL:--1}"
@@ -96,6 +99,37 @@ EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-20}"
 EVAL_N_SAMPLES_PER_PROMPT="${EVAL_N_SAMPLES_PER_PROMPT:-1}"
 RUN_NAME="${RUN_NAME:-${MODEL_ALIAS}-${EXP_ALIAS}-${BATCH_SIZE}x${N_ROLLOUTS}}"
 OTHER_OPTION="${OTHER_OPTION:-}"
+
+TRAIN_DATA_PATH="${DATA_PATH}"
+if [ "${MAX_STEPS}" -gt 0 ]; then
+  SUBSET_DATA_PATH="${CKPT_DIR}run_data"
+  mkdir -p "${SUBSET_DATA_PATH}"
+  MAX_TRAIN_ISSUES=$((MAX_STEPS * BATCH_SIZE))
+  SOURCE_DATA_PATH="${DATA_PATH}" SUBSET_DATA_PATH="${SUBSET_DATA_PATH}" MAX_TRAIN_ISSUES="${MAX_TRAIN_ISSUES}" python - <<'PY'
+import os
+from pathlib import Path
+
+import pandas as pd
+
+source = Path(os.environ["SOURCE_DATA_PATH"])
+target = Path(os.environ["SUBSET_DATA_PATH"])
+max_train_issues = int(os.environ["MAX_TRAIN_ISSUES"])
+
+train = pd.read_parquet(source / "train.parquet")
+if len(train) < max_train_issues:
+    raise ValueError(
+        f"Not enough train issues for requested MAX_STEPS: "
+        f"need {max_train_issues}, found {len(train)}"
+    )
+
+train.head(max_train_issues).to_parquet(target / "train.parquet", index=False)
+validation_path = source / "validation.parquet"
+if validation_path.exists():
+    pd.read_parquet(validation_path).to_parquet(target / "validation.parquet", index=False)
+print(f"Prepared fixed train subset: {max_train_issues} issues -> {target / 'train.parquet'}")
+PY
+  TRAIN_DATA_PATH="${SUBSET_DATA_PATH}"
+fi
 
 export VLLM_FLASH_ATTN_VERSION="${VLLM_FLASH_ATTN_VERSION:-2}"
 export RAY_worker_register_timeout_seconds="${RAY_worker_register_timeout_seconds:-600}"
@@ -122,15 +156,16 @@ set -x
 uv run --isolated --active -m src.train \
   +run_async_trainer=${RUN_ASYNC_TRAINER} \
   +generator.exp_config=${EXP_CONFIG} \
-  data.train_data="['$DATA_PATH/train.parquet']" \
-  data.val_data="['$DATA_PATH/validation.parquet']" \
+  data.train_data="['$TRAIN_DATA_PATH/train.parquet']" \
+  data.val_data="['$TRAIN_DATA_PATH/validation.parquet']" \
   trainer.algorithm.advantage_estimator="grpo" \
   trainer.algorithm.grpo_norm_by_std=false \
+  trainer.seed=${TRAINER_SEED} \
   trainer.policy.model.path=${MODEL} \
   trainer.placement.colocate_all=${COLOCATE_ALL} \
   trainer.placement.colocate_policy_ref=true \
   trainer.strategy=fsdp2 \
-  trainer.policy.fsdp_config.cpu_offload=true \
+  trainer.policy.fsdp_config.cpu_offload=false \
   trainer.policy.fsdp_config.reshard_after_forward=true \
   trainer.policy.fsdp_config.fsdp_size=-1 \
   trainer.fully_async.num_parallel_generation_workers=${BATCH_SIZE} \
