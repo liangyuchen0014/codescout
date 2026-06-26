@@ -1,0 +1,8 @@
+reward:
+  - fn: atomic_outcome_localization_reward
+    weight: 1.0
+  - fn: gold_file_read_process_reward
+    weight: 0.05
+tools:
+  - terminal
+  - localization_finish

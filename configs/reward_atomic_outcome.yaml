@@ -1,0 +1,6 @@
+reward:
+  - fn: atomic_outcome_localization_reward
+    weight: 1.0
+tools:
+  - terminal
+  - localization_finish
